@@ -240,13 +240,13 @@ for arg in "$@"; do
 done
 
 # Check download directory
-if [[ ! -d "${DOWNLOAD_DIR}" ]]; then
+if [[ ! -d "${DOWNLOAD_DIR:?}" ]]; then
   echo -e "\E[1;31m[-] Download directory ${DOWNLOAD_DIR} not exist! \E[0m"
   exit 1
 fi
 
 # Check build directory
-if [[ ! -d "${BUILD_DIR}" ]]; then
+if [[ ! -d "${BUILD_DIR:?}" ]]; then
   echo -e "\E[1;31m[-] Build directory ${BUILD_DIR} not exist! \E[0m"
   exit 1
 fi
