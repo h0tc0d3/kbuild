@@ -29,7 +29,7 @@ USAGE: kbuild.sh [options]...
   --patch, -ps                   Apply kernel patches
   --disable-patch, -dp           Don't apply kernel patches
 
-  --map, -m                      Copy System.map
+  --map, -m                      Copy System.map to /boot/System-postfix.map
   --disable-map, -dm             Don't copy System.map
 
   --clean, -cs                   Clean source after build
@@ -78,7 +78,7 @@ DOWNLOAD_DIR=${PWD} # Directory for saving kernel archove files. ${PWD} - curren
 DIST_CLEAN=0    # If source directory exist make disclean before build? 0 - NO, 1-YES
 CLEAN_SOURCE=0  # Clean source code after build? 0 - NO, 1-YES.
 REMOVE_SOURCE=1 # Remove source code directory after build? 0 - NO, 1-YES. I recommend use only one CLEAN_SOURCE or DIST_CLEAN or REMOVE_SOURCE
-SYSTEM_MAP=0    # Copy System.map to /boot after build? 0 - NO, 1-YES.
+SYSTEM_MAP=0    # Copy System.map to /boot/System-${KERNEL_POSTFIX}.map" after build? 0 - NO, 1-YES.
 
 PATCH_SOURCE=1                          # Apply kernel patches? 0 - NO, 1-YES.
 PATCHES=("${HOME}/confstore/gcc.patch") # Kernel patches for apply.

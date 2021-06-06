@@ -21,7 +21,7 @@ DOWNLOAD_DIR=${PWD} # Directory for saving kernel archove files. ${PWD} - curren
 DIST_CLEAN=0    # If source directory exist make disclean before build? 0 - NO, 1-YES
 CLEAN_SOURCE=0  # Clean source code after build? 0 - NO, 1-YES.
 REMOVE_SOURCE=1 # Remove source code directory after build? 0 - NO, 1-YES. I recommend use only one CLEAN_SOURCE or DIST_CLEAN or REMOVE_SOURCE
-SYSTEM_MAP=0    # Copy System.map to /boot after build? 0 - NO, 1-YES.
+SYSTEM_MAP=0    # Copy System.map to /boot/System-${KERNEL_POSTFIX}.map" after build? 0 - NO, 1-YES.
 
 PATCH_SOURCE=1                          # Apply kernel patches? 0 - NO, 1-YES.
 PATCHES=("${HOME}/confstore/gcc.patch") # Kernel patches for apply.
@@ -214,7 +214,7 @@ for arg in "$@"; do
       " --disable-llvm, -dl\t\t Disable LLVM\n\n" \
       " --patch, -ps\t\t\t Apply kernel patches\n" \
       " --disable-patch, -dp\t\t Don't apply kernel patches\n\n" \
-      " --map, -m\t\t\t Copy System.map\n" \
+      " --map, -m\t\t\t Copy System.map to /boot/System-\E[1;33mpostfix\E[0m.map\n" \
       " --disable-map, -dm\t\t Don't copy System.map\n\n" \
       " --clean, -cs\t\t\t Clean source after build\n" \
       " --disable-clean, -dc\t\t Don't clean source after build\n" \
@@ -293,7 +293,7 @@ if [[ -d "${BUILD_DIR:?}/linux-${KERNEL_VERSION}" ]]; then
   )
 
   # If source directory exist make disclean before build.
-  if [[ ${DIST_CLEAN} -eq 1 || "${DIST_CLEAN,,}" == "true" ]]; then
+  if [[ ${DIST_CLEAN} -eq 1 ]]; then
     echo -e "\E[1;33m[+] Make distclean \E[0m"
     make distclean
   fi
@@ -437,8 +437,8 @@ fi
 
 # Copy System.map to /boot and name System-POSTFIX.map
 if [[ ${SYSTEM_MAP} -eq 1 ]]; then
-  echo -e "\E[1;33m[+] Copy System.map to /boot/System.map-${KERNEL_VERSION}-${KERNEL_POSTFIX} \E[0m"
-  sudo cp -v System.map "/boot/System.map-${KERNEL_VERSION:?}-${KERNEL_POSTFIX:?}"
+  echo -e "\E[1;33m[+] Copy System.map to /boot/System-${KERNEL_POSTFIX}.map \E[0m"
+  sudo cp -v System.map "/boot/System-${KERNEL_POSTFIX:?}.map"
 fi
 
 # Update boot init image
