@@ -9,7 +9,7 @@ KERNEL_CONFIGURATOR='nconfig'   # Kernel configurator nconfig, menuconfig, xconf
 # I recomment use nconfig, it better than menuconfig.
 # You can write full string like MENUCONFIG_COLOR=blackbg menuconfig
 # Detailed information you are can find https://www.kernel.org/doc/html/latest/kbuild/kconfig.html
-MKINITCPIO=1 # Run mkinicpio -p configname after kernel install? 0 - NO, 1-YES.
+MKINITCPIO=1                          # Run mkinicpio -p configname after kernel install? 0 - NO, 1-YES.
 MKINITCPIO_CONFIG="${KERNEL_POSTFIX}" # mkinicpio config file name.
 
 CONFIGURATOR=0      # Start kernel configurator? 0 - NO, 1-YES. If you not need configure kernel set 0.
@@ -99,10 +99,11 @@ for arg in "$@"; do
   -dmk | --disable-mkinitcpio)
     shift
     MKINITCPIO=0
-  ;;
+    ;;
   -mc | --mkinitcpio-config)
     shift
-    MKINITCPIO_CONFIG="${1}";;
+    MKINITCPIO_CONFIG="${1}"
+    ;;
   -j | --threads)
     shift
     THREADS="${1}"
@@ -251,10 +252,14 @@ if [[ ! -d "${BUILD_DIR:?}" ]]; then
   exit 1
 fi
 
-# Linux Kernel Download URL
+# Kernel version for DKMS. Need for DKMS install.
+KERNEL_VERSION_DKMS=${KERNEL_VERSION}
+
+# Linux Kernel Download URL and KERNEL_VERSION_DKMS for rc version.
 KERNEL_URL=''
 if [[ "${KERNEL_VERSION}" =~ "rc" ]]; then                                      # If version contain rc string.
   KERNEL_URL="https://git.kernel.org/torvalds/t/linux-${KERNEL_VERSION}.tar.gz" # Kernel Download URL For RC Versions.
+  KERNEL_VERSION_DKMS="${KERNEL_VERSION%-*}.0-${KERNEL_VERSION#*-}"
 else
   KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-${KERNEL_VERSION}.tar.xz" # Kernel Download URL For Release Versions.
 fi
@@ -425,7 +430,7 @@ if [[ ${DKMS_INSTALL} -eq 1 ]]; then
   for dkms_module in "${DKMS_MODULES[@]}"; do
     echo -e "\E[1;33m[+] Install DKMS module: ${dkms_module} \E[0m"
     set +e
-    eval "sudo ${BUILD_FLAGS} dkms install ${dkms_module} -k ${KERNEL_VERSION}-${KERNEL_POSTFIX}"
+    eval "sudo ${BUILD_FLAGS} dkms install ${dkms_module} -k ${KERNEL_VERSION_DKMS}-${KERNEL_POSTFIX}"
     set -e
   done
 fi
