@@ -23,12 +23,16 @@ CLEAN_SOURCE=0  # Clean source code after build? 0 - NO, 1-YES.
 REMOVE_SOURCE=1 # Remove source code directory after build? 0 - NO, 1-YES. I recommend use only one CLEAN_SOURCE or DIST_CLEAN or REMOVE_SOURCE
 SYSTEM_MAP=0    # Copy System.map to /boot/System-${KERNEL_POSTFIX}.map" after build? 0 - NO, 1-YES.
 
-PATCH_SOURCE=1                          # Apply kernel patches? 0 - NO, 1-YES.
-PATCHES=("${HOME}/confstore/gcc.patch") # Kernel patches for apply.
+PATCH_SOURCE=0 # Apply kernel patches? 0 - NO, 1-YES.
+PATCHES=()     # Kernel patches for apply.
 
-DKMS_INSTALL=1                                        # DKMS Install? 0 - NO, 1-YES.
-DKMS_UNINSTALL=1                                      # DKMS Uninstall? 0 - NO, 1-YES.
-DKMS_MODULES=('openrazer-driver/3.0.1' 'digimend/10') # DKMS Modules what we will install.
+DKMS_INSTALL=0   # DKMS Install? 0 - NO, 1-YES.
+DKMS_UNINSTALL=0 # DKMS Uninstall? 0 - NO, 1-YES.
+DKMS_MODULES=()  # DKMS Modules what we will install.
+
+SIGN=0
+SIGN_ALGORITHM='sha256'
+SIGN_MODULES=()
 
 # Don't change! Stops for debug and manual control!
 STOP_DOWNLOAD=0 # Stop after download source archive? 0 - NO, 1-YES.
@@ -261,6 +265,10 @@ if [[ "${KERNEL_VERSION}" =~ "rc" ]]; then                                      
   KERNEL_URL="https://git.kernel.org/torvalds/t/linux-${KERNEL_VERSION}.tar.gz" # Kernel Download URL For RC Versions.
   KERNEL_VERSION_DKMS="${KERNEL_VERSION%-*}.0-${KERNEL_VERSION#*-}"
 else
+  dots=${KERNEL_VERSION//[^\.]/}
+  if [[ ${#dots} -eq 1 ]]; then
+    KERNEL_VERSION_DKMS="${KERNEL_VERSION}.0"
+  fi
   KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-${KERNEL_VERSION}.tar.xz" # Kernel Download URL For Release Versions.
 fi
 
@@ -432,6 +440,14 @@ if [[ ${DKMS_INSTALL} -eq 1 ]]; then
     set +e
     eval "sudo ${BUILD_FLAGS} dkms install ${dkms_module} -k ${KERNEL_VERSION_DKMS}-${KERNEL_POSTFIX}"
     set -e
+  done
+fi
+
+# Sign Modules
+if [[ ${SIGN} -eq 1 ]]; then
+  for module in "${SIGN_MODULES[@]}"; do
+    echo -e "\E[1;33m[+] Sign module: ${module} \E[0m"
+    sudo ./scripts/sign-file "${SIGN_ALGORITHM}" certs/signing_key.pem certs/signing_key.x509 "/lib/modules/${KERNEL_VERSION_DKMS}-${KERNEL_POSTFIX}/${module}"
   done
 fi
 
