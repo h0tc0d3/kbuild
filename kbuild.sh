@@ -273,12 +273,28 @@ else
 fi
 
 # Build flags can be empty for GCC and set to LLVM.
-BUILD_FLAGS=''
+BUILD_FLAGS=()
 # Set build flags if wea re using LLVM
 if [[ ${LLVM} -eq 1 ]]; then
   echo -e "\E[1;33m[+] LLVM and Clang Enabled \E[0m"
   if clang --version 2>/dev/null | grep -iq "clang\s*version\s*[0-9]" && ld.lld --version 2>/dev/null | grep -iq "LLD\s*[0-9]"; then
-    BUILD_FLAGS="LLVM=1 LLVM_IAS=1 CC=clang CXX=clang++ LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip READELF=llvm-readelf HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar HOSTLD=ld.lld OBJCOPY=llvm-objcopy OBJDUMP=objdump"
+    BUILD_FLAGS=(
+      LLVM=1
+      LLVM_IAS=1
+      CC=clang
+      CXX=clang++
+      LD=ld.lld
+      AR=llvm-ar
+      NM=llvm-nm
+      STRIP=llvm-strip
+      READELF=llvm-readelf
+      HOSTCC=clang
+      HOSTCXX=clang++
+      HOSTAR=llvm-ar
+      HOSTLD=ld.lld
+      OBJCOPY=llvm-objcopy
+      OBJDUMP=objdump
+    )
   else
     echo -e "\E[1;31m[-]Clang and ld.lld not found. Will use default system compiler! \E[0m"
   fi
@@ -377,12 +393,12 @@ fi
 
 # Update old config to new kernel
 echo -e "\E[1;33m[+] Updating old config to new kernel \E[0m"
-eval "make ${BUILD_FLAGS} oldconfig"
+eval "make ${BUILD_FLAGS[*]} oldconfig"
 
 # Start kernel configurator
 if [[ ${CONFIGURATOR} -eq 1 ]]; then
   echo -e "\E[1;33m[+] Starting kernel configurator: ${KERNEL_CONFIGURATOR}. \E[0m"
-  eval "make ${BUILD_FLAGS} -j${THREADS} ${KERNEL_CONFIGURATOR}"
+  eval "make ${BUILD_FLAGS[*]} -j${THREADS} ${KERNEL_CONFIGURATOR}"
 fi
 
 # Stop after kernel configurator
@@ -392,14 +408,14 @@ fi
 
 # Build Kernel
 echo -e "\E[1;33m[+] Build linux kernel \E[0m"
-eval "make ${BUILD_FLAGS} -j${THREADS}" || (
+eval "make ${BUILD_FLAGS[*]} -j${THREADS}" || (
   echo -e "\E[1;31m[-] Kernel build failed! \E[0m"
   exit 1
 )
 
 # Build Modules
 echo -e "\E[1;33m[+] Build kernel modules \E[0m"
-eval "make ${BUILD_FLAGS} -j${THREADS} modules" || (
+eval "make ${BUILD_FLAGS[*]} -j${THREADS} modules" || (
   echo -e "\E[1;31m[-] Kernel Modules build failed! \E[0m"
   exit 1
 )
@@ -428,7 +444,7 @@ fi
 
 # Modules install
 echo -e "\E[1;33m[+] Installing kernel modules \E[0m"
-eval "sudo make ${BUILD_FLAGS} -j${THREADS} modules_install"
+eval "sudo make ${BUILD_FLAGS[*]} -j${THREADS} modules_install"
 # Copy Linux kernel to /boot and name vmlinuz-POSTFIX
 echo -e "\E[1;33m[+] Copy linux kernel to /boot/vmlinuz-${KERNEL_POSTFIX} \E[0m"
 sudo cp -v arch/x86_64/boot/bzImage "/boot/vmlinuz-${KERNEL_POSTFIX:?}"
@@ -438,7 +454,7 @@ if [[ ${DKMS_INSTALL} -eq 1 ]]; then
   for dkms_module in "${DKMS_MODULES[@]}"; do
     echo -e "\E[1;33m[+] Install DKMS module: ${dkms_module} \E[0m"
     set +e
-    eval "sudo ${BUILD_FLAGS} dkms install ${dkms_module} -k ${KERNEL_VERSION_DKMS}-${KERNEL_POSTFIX}"
+    eval "sudo ${BUILD_FLAGS[*]} dkms install ${dkms_module} -k ${KERNEL_VERSION_DKMS}-${KERNEL_POSTFIX}"
     set -e
   done
 fi
