@@ -469,22 +469,9 @@ if [[ ${STOP_CONFIG} -eq 1 ]]; then
   exit 0
 fi
 
-SIGN_HASH=$(grep -Po '(?<=CONFIG_MODULE_SIG_HASH=").*(?=")' .config)
-SIGN_KEY=$(grep -Po '(?<=CONFIG_MODULE_SIG_KEY=").*(?=")' .config)
-MODULES_COMPRESS=$(grep -Po '(?<=CONFIG_MODULE_COMPRESS_).*(?=\=y)' .config | tr '[:upper:]' '[:lower:]')
-DECOMPRESS='echo -e "\E[1;31m[-] Modules UNCOMPRESS not set! \E[0m";exit 1'
-COMPRESS='echo -e "\E[1;31m[-] Modules COMPRESS not set! \E[0m";exit 1'
-
-if [[ "${MODULES_COMPRESS}" == "xz" ]]; then
-  DECOMPRESS='xz --decompress'
-  COMPRESS='xz --compress'
-elif [[ "${MODULES_COMPRESS}" == "gz" ]]; then
-  DECOMPRESS='gzip --decompress'
-  COMPRESS='gzip'
-elif [[ "${MODULES_COMPRESS}" == "zstd" ]]; then
-  DECOMPRESS='zstd --decompress'
-  COMPRESS='zstd --compress'
-fi
+SIGN_HASH=$(grep -Po '(?<=CONFIG_MODULE_SIG_HASH=").*(?=")' "${BUILD_DIR:?}/linux-${KERNEL_VERSION}/.config")
+SIGN_KEY=$(grep -Po '(?<=CONFIG_MODULE_SIG_KEY=").*(?=")' "${BUILD_DIR:?}/linux-${KERNEL_VERSION}/.config")
+MODULES_COMPRESS=$(grep -Po '(?<=CONFIG_MODULE_COMPRESS_).*(?=\=y)' "${BUILD_DIR:?}/linux-${KERNEL_VERSION}/.config" | tr '[:upper:]' '[:lower:]')
 
 # Build Kernel
 echo -e "\E[1;33m[+] Build linux kernel \E[0m"
@@ -552,9 +539,30 @@ if [[ ${SIGN_DKMS} -eq 1 ]]; then
 
     for smodule in "${MODULES_SIGN[@]}"; do
 
-      eval "sudo ${DECOMPRESS} ${smodule:?}"
-      sudo ./scripts/sign-file "${SIGN_HASH:?}" "${SIGN_KEY:?}" certs/signing_key.x509 "${smodule%.*}"
-      eval "sudo ${COMPRESS} ${smodule%.*}"
+      if [[ "${MODULES_COMPRESS}" == "xz" ]]; then
+
+        sudo xz --decompress "${smodule:?}"
+        sudo ./scripts/sign-file "${SIGN_HASH:?}" "${SIGN_KEY:?}" certs/signing_key.x509 "${smodule%.*}"
+        sudo xz --compress "${smodule%.*}"
+
+      elif [[ "${MODULES_COMPRESS}" == "gz" ]]; then
+
+        sudo gzip --decompress "${smodule:?}"
+        sudo ./scripts/sign-file "${SIGN_HASH:?}" "${SIGN_KEY:?}" certs/signing_key.x509 "${smodule%.*}"
+        sudo gzip "${smodule%.*}"
+
+      elif [[ "${MODULES_COMPRESS}" == "zstd" ]]; then
+
+        sudo zstd --decompress "${smodule:?}"
+        sudo ./scripts/sign-file "${SIGN_HASH:?}" "${SIGN_KEY:?}" certs/signing_key.x509 "${smodule%.*}"
+        sudo zstd --compress --force "${smodule%.*}"
+        sudo rm -f "${smodule%.*}"
+
+      else
+
+        sudo ./scripts/sign-file "${SIGN_HASH:?}" "${SIGN_KEY:?}" certs/signing_key.x509 "${smodule:?}"
+
+      fi
 
     done
 
