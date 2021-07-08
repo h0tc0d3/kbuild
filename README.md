@@ -16,6 +16,9 @@ USAGE: kbuild.sh [options]...
   --threads, -t                  Build threads          --threads 8 | -t 8
   --configurator, -x             Kernel configurator    --configurator nconfig | -x "MENUCONFIG_COLOR=blackbg menuconfig"
 
+  --verify, -vs                  Verify Linux Kernel source archive sign
+  --disable-verify, -dv          Don't verify Linux Kernel source archive sign
+
   --start, -s                    Start configurator
   --disable-start, -ds           Don't start configurator
 
@@ -43,6 +46,8 @@ USAGE: kbuild.sh [options]...
   --disable-dkms-install, -ddi   Disable Install DKMS Modules
   --dkms-uninstall, -du          Enable Uninstall DKMS Modules
   --disable-dkms-uninstall, -ddu Disable Uninstall DKMS Modules
+  --dkms-sign, -sm               Sign DKMS Modules
+  --disable-dkms-sign, -dsm      Don't sign DKMS Modules
 
   --stop-download, -sd           Stop after download
   --stop-extract, -se            Stop after extract archive
@@ -66,6 +71,7 @@ KERNEL_CONFIGURATOR='nconfig'   # Kernel configurator nconfig, menuconfig, xconf
 # I recomment use nconfig, it better than menuconfig.
 # You can write full string like MENUCONFIG_COLOR=blackbg menuconfig
 # Detailed information you are can find https://www.kernel.org/doc/html/latest/kbuild/kconfig.html
+KERNEL_VERIFY_SIGN=1            # Verify kernel source archive GPG sign?
 MKINITCPIO=1 # Run mkinicpio -p configname after kernel install? 0 - NO, 1-YES.
 MKINITCPIO_CONFIG="${KERNEL_POSTFIX}" # mkinicpio config file name.
 
@@ -86,3 +92,6 @@ PATCHES=("${HOME}/confstore/gcc.patch") # Kernel patches for apply.
 DKMS_INSTALL=1                                        # DKMS Install? 0 - NO, 1-YES.
 DKMS_UNINSTALL=1                                      # DKMS Uninstall? 0 - NO, 1-YES.
 DKMS_MODULES=('openrazer-driver/3.0.1' 'digimend/10') # DKMS Modules what we will install.
+SIGN_DKMS=1                                           # Sign DKMS modules?
+SIGN_DKMS_MODULES=(razerkbd.ko razermouse.ko razerkraken.ko razeraccessory.ko) # Modules list to sign
+```

@@ -6,6 +6,7 @@ KERNEL_VERSION='5.12.9'         # Which version of kernel we will build.
 KERNEL_POSTFIX='noname'         # Kernel postfix
 KERNEL_CONFIG='/proc/config.gz' # Kernel configuration file. Support text files and gz files with extension gz.
 KERNEL_CONFIGURATOR='nconfig'   # Kernel configurator nconfig, menuconfig, xconfig.
+KERNEL_VERIFY_SIGN=1            # Verify kernel source archive GPG sign?
 # I recomment use nconfig, it better than menuconfig.
 # You can write full string like MENUCONFIG_COLOR=blackbg menuconfig
 # Detailed information you are can find https://www.kernel.org/doc/html/latest/kbuild/kconfig.html
@@ -26,13 +27,11 @@ SYSTEM_MAP=0    # Copy System.map to /boot/System-${KERNEL_POSTFIX}.map" after b
 PATCH_SOURCE=0 # Apply kernel patches? 0 - NO, 1-YES.
 PATCHES=()     # Kernel patches for apply.
 
-DKMS_INSTALL=0   # DKMS Install? 0 - NO, 1-YES.
-DKMS_UNINSTALL=0 # DKMS Uninstall? 0 - NO, 1-YES.
-DKMS_MODULES=()  # DKMS Modules what we will install.
-
-SIGN=0
-SIGN_ALGORITHM='sha256'
-SIGN_MODULES=()
+DKMS_INSTALL=0       # DKMS Install? 0 - NO, 1-YES.
+DKMS_UNINSTALL=0     # DKMS Uninstall? 0 - NO, 1-YES.
+DKMS_MODULES=()      # DKMS Modules what we will install.
+SIGN_DKMS=0          # Sign DKMS modules?
+SIGN_DKMS_MODULES=() # Modules list to sign
 
 # Don't change! Stops for debug and manual control!
 STOP_DOWNLOAD=0 # Stop after download source archive? 0 - NO, 1-YES.
@@ -42,8 +41,12 @@ STOP_CONFIG=0   # Stop after kernel configurator? 0 - NO, 1-YES.
 STOP_BUILD=0    # Stop after build? 0 - NO, 1-YES.
 STOP_INSTALL=0  # Stop after install? 0 - NO, 1-YES.
 
+SIGN_HASH=''
+SIGN_KEY=''
+
 # Strict Mode
 set -euo pipefail
+export LC_ALL=C
 
 # Check user previlegies
 if [[ ${EUID} -eq 0 ]]; then
@@ -87,6 +90,22 @@ for arg in "$@"; do
     shift
     KERNEL_CONFIGURATOR="${1}"
     CONFIGURATOR=1
+    ;;
+  -vs | --verify)
+    shift
+    KERNEL_VERIFY_SIGN=1
+    ;;
+  -dv | --disable-verify)
+    shift
+    KERNEL_VERIFY_SIGN=0
+    ;;
+  -sm | --dkms-sign)
+    shift
+    SIGN_DKMS=1
+    ;;
+  -dsm | --disable-dkms-sign)
+    shift
+    SIGN_DKMS=0
     ;;
   -s | --start)
     shift
@@ -210,6 +229,8 @@ for arg in "$@"; do
       " --download, -z\t\t Download directory\t--download /tmp | -z /tmp\n" \
       " --threads, -t\t\t\t Build threads\t\t--threads 8 | -t 8\n" \
       " --configurator, -x\t\t Kernel configurator\t--configurator nconfig | -x \"MENUCONFIG_COLOR=blackbg menuconfig\"\n\n" \
+      " --verify, -vs\t\t\t Verify Linux Kernel source archive sign\n" \
+      " --disable-verify, -dv\t\t Don't verify Linux Kernel source archive sign\n\n" \
       " --start, -s\t\t\t Start configurator\n" \
       " --disable-start, -ds\t\t Don't start configurator\n\n" \
       " --mkinitcpio, -mk\t\t Start mkinitcpio after kernel installation\n" \
@@ -230,14 +251,15 @@ for arg in "$@"; do
       " --dkms-install, -di\t\t Enable Install DKMS Modules\n" \
       " --disable-dkms-install, -ddi\t Disable Install DKMS Modules\n" \
       " --dkms-uninstall, -du\t\t Enable Uninstall DKMS Modules\n" \
-      " --disable-dkms-uninstall, -ddu Disable Uninstall DKMS Modules\n\n" \
+      " --disable-dkms-uninstall, -ddu Disable Uninstall DKMS Modules\n" \
+      " --dkms-sign, -sm\t\t Sign DKMS Modules\n" \
+      " --disable-dkms-sign, -dsm\t Don't sign DKMS Modules\n\n" \
       " --stop-download, -sd\t\t Stop after download\n" \
       " --stop-extract, -se\t\t Stop after extract archive\n" \
       " --stop-patch, -sp\t\t Stop after patch source\n" \
       " --stop-config, -sc\t\t Stop after kernel configurator\n" \
       " --stop-build, -sb\t\t Stop after build\n" \
       " --stop-install, -si\t\t Stop after install\n"
-
     exit 0
     ;;
   *) shift ;;
@@ -261,9 +283,13 @@ KERNEL_VERSION_DKMS=${KERNEL_VERSION}
 
 # Linux Kernel Download URL and KERNEL_VERSION_DKMS for rc version.
 KERNEL_URL=''
+KERNEL_SIGN="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-${KERNEL_VERSION}.tar.sign"
+KERNEL_EXT='xz'
 if [[ "${KERNEL_VERSION}" =~ "rc" ]]; then                                      # If version contain rc string.
   KERNEL_URL="https://git.kernel.org/torvalds/t/linux-${KERNEL_VERSION}.tar.gz" # Kernel Download URL For RC Versions.
   KERNEL_VERSION_DKMS="${KERNEL_VERSION%-*}.0-${KERNEL_VERSION#*-}"
+  KERNEL_EXT='gz'
+  KERNEL_VERIFY_SIGN=0
 else
   dots=${KERNEL_VERSION//[^\.]/}
   if [[ ${#dots} -eq 1 ]]; then
@@ -301,9 +327,29 @@ if [[ ${LLVM} -eq 1 ]]; then
 fi
 
 # If kernel source archive not exist than download kernel source.
-if [[ ! (-f "${DOWNLOAD_DIR}/linux-${KERNEL_VERSION}.tar.xz" || -f "${DOWNLOAD_DIR}/linux-${KERNEL_VERSION}.tar.gz") ]]; then
+if [[ ! -f "${DOWNLOAD_DIR}/linux-${KERNEL_VERSION}.tar" ]]; then
+
   echo -e "\E[1;33m[+] Downloading Linux Kernel Source: ${KERNEL_URL} \E[0m"
   wget "${KERNEL_URL}" -P "${DOWNLOAD_DIR}" || exit 1
+
+  # Unpacking kernel source archive
+  if [[ "${KERNEL_EXT}" == "xz" ]]; then
+    xz --decompress "${DOWNLOAD_DIR}/linux-${KERNEL_VERSION}.tar.${KERNEL_EXT}" || (
+      echo -e "\E[1;31m[-] Kernel source archive extract failed! Bad linux-${KERNEL_VERSION}.tar.${KERNEL_EXT} archive or build directory permissions! \E[0m"
+      exit 1
+    )
+  elif [[ "${KERNEL_EXT}" == "gz" ]]; then
+    gzip --decompress "${DOWNLOAD_DIR}/linux-${KERNEL_VERSION}.tar.${KERNEL_EXT}" || (
+      echo -e "\E[1;31m[-] Kernel source archive extract failed! Bad linux-${KERNEL_VERSION}.tar.${KERNEL_EXT} archive or build directory permissions! \E[0m"
+      exit 1
+    )
+  fi
+
+fi
+
+if [[ ${KERNEL_VERIFY_SIGN} -eq 1 && ! -f "${DOWNLOAD_DIR}/linux-${KERNEL_VERSION}.tar.sign" ]]; then
+  echo -e "\E[1;33m[+] Downloading Linux Kernel Sign: ${KERNEL_SIGN} \E[0m"
+  wget "${KERNEL_SIGN}" -P "${DOWNLOAD_DIR}" || exit 1
 fi
 
 # Stop after download
@@ -329,18 +375,35 @@ if [[ -d "${BUILD_DIR:?}/linux-${KERNEL_VERSION}" ]]; then
 
 else
 
-  # Detect kernel source archive extension. RC versions have tar.gz extension and releases have tar.xz
-  _ext=$(find "${DOWNLOAD_DIR}" -maxdepth 1 -name "linux-${KERNEL_VERSION}.tar.*" | head -n 1 | grep -oP "\w*$")
-
-  echo -e "\E[1;33m[+] Extracting Linux Kernel source archive: linux-${KERNEL_VERSION}.tar.${_ext}\E[0m"
-  if [[ ! -f "${DOWNLOAD_DIR}/linux-${KERNEL_VERSION}.tar.${_ext}" ]]; then
-    echo -e "\E[1;31m[-] Kernel source achive linux-${KERNEL_VERSION}.tar.${_ext} not exist! \E[0m"
+  echo -e "\E[1;33m[+] Extracting Linux Kernel source archive: linux-${KERNEL_VERSION}.tar\E[0m"
+  if [[ ! -f "${DOWNLOAD_DIR}/linux-${KERNEL_VERSION}.tar" ]]; then
+    echo -e "\E[1;31m[-] Kernel source achive linux-${KERNEL_VERSION}.tar not exist! \E[0m"
     exit 1
   fi
 
+  if [[ ${KERNEL_VERIFY_SIGN} -eq 1 ]]; then
+
+    if ! gpg2 --finger 647F28654894E3BD457199BE38DBBDC86092693E 2>/dev/null | grep -iq "pub" ||
+      ! gpg2 --finger ABAF11C65A2970B130ABE3C479BE3E4300411886 2>/dev/null | grep -iq "pub"; then
+
+      # Import Maintainers GPG Keys of Kernel Source
+      gpg2 --keyserver hkps://keys.openpgp.org --locate-keys torvalds@kernel.org gregkh@kernel.org
+      gpg2 --tofu-policy good 647F28654894E3BD457199BE38DBBDC86092693E
+      gpg2 --tofu-policy good ABAF11C65A2970B130ABE3C479BE3E4300411886
+
+    fi
+
+    if ! gpg2 --trust-model tofu --verify "${DOWNLOAD_DIR}/linux-${KERNEL_VERSION}.tar.sign" "${DOWNLOAD_DIR}/linux-${KERNEL_VERSION}.tar"; then
+      echo -e "\E[1;31m[-] Kernel source archive sign check failed!\E[0m" \
+        "\nPlease delete linux-${KERNEL_VERSION}.tar.sign and linux-${KERNEL_VERSION}.tar files and try again."
+      exit 1
+    fi
+
+  fi
+
   # Extracting source.
-  tar -xf "${DOWNLOAD_DIR}/linux-${KERNEL_VERSION}.tar.${_ext}" -C "${BUILD_DIR:?}" || (
-    echo "\E[1;31m[-] Kernel source archive extract failed! Bad archive or build directory permissions! \E[0m"
+  tar -xf "${DOWNLOAD_DIR}/linux-${KERNEL_VERSION}.tar" -C "${BUILD_DIR:?}" || (
+    echo -e "\E[1;31m[-] Kernel source archive extract failed! Bad archive or build directory permissions! \E[0m"
     exit 1
   )
 
@@ -406,6 +469,23 @@ if [[ ${STOP_CONFIG} -eq 1 ]]; then
   exit 0
 fi
 
+SIGN_HASH=$(grep -Po '(?<=CONFIG_MODULE_SIG_HASH=").*(?=")' .config)
+SIGN_KEY=$(grep -Po '(?<=CONFIG_MODULE_SIG_KEY=").*(?=")' .config)
+MODULES_COMPRESS=$(grep -Po '(?<=CONFIG_MODULE_COMPRESS_).*(?=\=y)' .config | tr '[:upper:]' '[:lower:]')
+DECOMPRESS='echo -e "\E[1;31m[-] Modules UNCOMPRESS not set! \E[0m";exit 1'
+COMPRESS='echo -e "\E[1;31m[-] Modules COMPRESS not set! \E[0m";exit 1'
+
+if [[ "${MODULES_COMPRESS}" == "xz" ]]; then
+  DECOMPRESS='xz --decompress'
+  COMPRESS='xz --compress'
+elif [[ "${MODULES_COMPRESS}" == "gz" ]]; then
+  DECOMPRESS='gzip --decompress'
+  COMPRESS='gzip'
+elif [[ "${MODULES_COMPRESS}" == "zstd" ]]; then
+  DECOMPRESS='zstd --decompress'
+  COMPRESS='zstd --compress'
+fi
+
 # Build Kernel
 echo -e "\E[1;33m[+] Build linux kernel \E[0m"
 eval "make ${BUILD_FLAGS[*]} -j${THREADS}" || (
@@ -460,10 +540,24 @@ if [[ ${DKMS_INSTALL} -eq 1 ]]; then
 fi
 
 # Sign Modules
-if [[ ${SIGN} -eq 1 ]]; then
-  for module in "${SIGN_MODULES[@]}"; do
+if [[ ${SIGN_DKMS} -eq 1 ]]; then
+  for module in "${SIGN_DKMS_MODULES[@]}"; do
+
     echo -e "\E[1;33m[+] Sign module: ${module} \E[0m"
-    sudo ./scripts/sign-file "${SIGN_ALGORITHM}" certs/signing_key.pem certs/signing_key.x509 "/lib/modules/${KERNEL_VERSION_DKMS}-${KERNEL_POSTFIX}/${module}"
+
+    MODULES_SIGN=()
+    while IFS=$'\n' read -r line; do
+      MODULES_SIGN+=("${line}")
+    done < <(find "/lib/modules/${KERNEL_VERSION_DKMS}-${KERNEL_POSTFIX}/" -type f -name "${module:?}*")
+
+    for smodule in "${MODULES_SIGN[@]}"; do
+
+      eval "sudo ${DECOMPRESS} ${smodule:?}"
+      sudo ./scripts/sign-file "${SIGN_HASH:?}" "${SIGN_KEY:?}" certs/signing_key.x509 "${smodule%.*}"
+      eval "sudo ${COMPRESS} ${smodule%.*}"
+
+    done
+
   done
 fi
 
