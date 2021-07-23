@@ -10,6 +10,8 @@ KERNEL_VERIFY_SIGN=1            # Verify kernel source archive GPG sign?
 # I recomment use nconfig, it better than menuconfig.
 # You can write full string like MENUCONFIG_COLOR=blackbg menuconfig
 # Detailed information you are can find https://www.kernel.org/doc/html/latest/kbuild/kconfig.html
+KBUILD_REDIRECT_MSGS=''               # If not empty redirect build messages to file or /dev/null.(Show only errors in console)
+KCFLAGS=''                            # Add extra compiler CFLAGS
 MKINITCPIO=1                          # Run mkinicpio -p configname after kernel install? 0 - NO, 1-YES.
 MKINITCPIO_CONFIG="${KERNEL_POSTFIX}" # mkinicpio config file name.
 
@@ -219,6 +221,10 @@ for arg in "$@"; do
     shift
     STOP_INSTALL=1
     ;;
+  -k | --kcflags)
+    shift
+    KCFLAGS="${1}"
+    ;;
   -h | --help)
     echo -e "\nUSAGE: $(basename "$0") [options]...\n\n" \
       " Options:\t\t\t Description:\t\tExample:\n" \
@@ -236,6 +242,7 @@ for arg in "$@"; do
       " --mkinitcpio, -mk\t\t Start mkinitcpio after kernel installation\n" \
       " --disable-mkinitcpio, -dmk\t Don't start mkinitcpio after kernel installation\n" \
       " --mkinitcpio-config, -mc\t Mkinitcpio config\t--mkinitcpio-config noname | -mc noname\n\n" \
+      " --kcflags, -k\t\t\t Add extra compiler CFLAGS\t--kcflags -fprofile-use=vmlinux.profdata \n\t\t\t\t\t\t\t\t-k -fprofile-use=vmlinux.profdata\n\n" \
       " --llvm, -l\t\t\t Enable LLVM\n" \
       " --disable-llvm, -dl\t\t Disable LLVM\n\n" \
       " --patch, -ps\t\t\t Apply kernel patches\n" \
@@ -299,12 +306,13 @@ else
 fi
 
 # Build flags can be empty for GCC and set to LLVM.
-BUILD_FLAGS=()
+BUILD_FLAGS=(KCFLAGS="${KCFLAGS}")
 # Set build flags if wea re using LLVM
 if [[ ${LLVM} -eq 1 ]]; then
   echo -e "\E[1;33m[+] LLVM and Clang Enabled \E[0m"
   if clang --version 2>/dev/null | grep -iq "clang\s*version\s*[0-9]" && ld.lld --version 2>/dev/null | grep -iq "LLD\s*[0-9]"; then
     BUILD_FLAGS=(
+      KCFLAGS="${KCFLAGS}"
       LLVM=1
       LLVM_IAS=1
       CC=clang
@@ -450,7 +458,7 @@ if [[ ! -f .config && -f "${KERNEL_CONFIG}" ]]; then
   if [[ "${KERNEL_CONFIG##*.}" == "gz" ]]; then
     zcat "${KERNEL_CONFIG}" >.config
   else
-    cp "${KERNEL_CONFIG}" .config
+    cat "${KERNEL_CONFIG}" >.config
   fi
 fi
 
@@ -473,19 +481,32 @@ SIGN_HASH=$(grep -Po '(?<=CONFIG_MODULE_SIG_HASH=").*(?=")' "${BUILD_DIR:?}/linu
 SIGN_KEY=$(grep -Po '(?<=CONFIG_MODULE_SIG_KEY=").*(?=")' "${BUILD_DIR:?}/linux-${KERNEL_VERSION}/.config")
 MODULES_COMPRESS=$(grep -Po '(?<=CONFIG_MODULE_COMPRESS_).*(?=\=y)' "${BUILD_DIR:?}/linux-${KERNEL_VERSION}/.config" | tr '[:upper:]' '[:lower:]')
 
+BUILD_FAILED=0
 # Build Kernel
 echo -e "\E[1;33m[+] Build linux kernel \E[0m"
-eval "make ${BUILD_FLAGS[*]} -j${THREADS}" || (
+if [[ -n ${KBUILD_REDIRECT_MSGS} ]]; then
+  eval "make ${BUILD_FLAGS[*]} -j${THREADS} >${KBUILD_REDIRECT_MSGS}" || BUILD_FAILED=1
+else
+  eval "make ${BUILD_FLAGS[*]} -j${THREADS}" || BUILD_FAILED=1
+fi
+
+if [[ ${BUILD_FAILED} -eq 1 ]]; then
   echo -e "\E[1;31m[-] Kernel build failed! \E[0m"
   exit 1
-)
+fi
 
 # Build Modules
 echo -e "\E[1;33m[+] Build kernel modules \E[0m"
-eval "make ${BUILD_FLAGS[*]} -j${THREADS} modules" || (
+if [[ -n ${KBUILD_REDIRECT_MSGS} ]]; then
+  eval "make ${BUILD_FLAGS[*]} -j${THREADS} modules >${KBUILD_REDIRECT_MSGS}" || BUILD_FAILED=1
+else
+  eval "make ${BUILD_FLAGS[*]} -j${THREADS} modules" || BUILD_FAILED=1
+fi
+
+if [[ ${BUILD_FAILED} -eq 1 ]]; then
   echo -e "\E[1;31m[-] Kernel Modules build failed! \E[0m"
   exit 1
-)
+fi
 
 # Stop after build
 if [[ ${STOP_BUILD} -eq 1 ]]; then
@@ -511,9 +532,20 @@ fi
 
 # Modules install
 echo -e "\E[1;33m[+] Installing kernel modules \E[0m"
-eval "sudo make ${BUILD_FLAGS[*]} -j${THREADS} modules_install"
+if [[ -n ${KBUILD_REDIRECT_MSGS} ]]; then
+  eval "sudo make ${BUILD_FLAGS[*]} -j${THREADS} modules_install" >"${KBUILD_REDIRECT_MSGS}" || BUILD_FAILED=1
+else
+  eval "sudo make ${BUILD_FLAGS[*]} -j${THREADS} modules_install" || BUILD_FAILED=1
+fi
+
+if [[ ${BUILD_FAILED} -eq 1 ]]; then
+  echo -e "\E[1;31m[-] Kernel Modules Install failed! \E[0m"
+  exit 1
+fi
+
 # Copy Linux kernel to /boot and name vmlinuz-POSTFIX
 echo -e "\E[1;33m[+] Copy linux kernel to /boot/vmlinuz-${KERNEL_POSTFIX} \E[0m"
+
 sudo cp -v arch/x86_64/boot/bzImage "/boot/vmlinuz-${KERNEL_POSTFIX:?}"
 
 # Install DKMS Modules

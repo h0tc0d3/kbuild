@@ -1,7 +1,7 @@
 # Flexible Linux Kernel Build Script
 
-To see help start script with --help or -h paramer `./kbuild.sh --help`.
-Script parameters overwrite default configuration values.
+To see help start script with --help or -h parameter `./kbuild.sh --help`.
+Script parameters override default configuration values.
 
 ```text
 
@@ -26,6 +26,8 @@ USAGE: kbuild.sh [options]...
   --disable-mkinitcpio, -dmk     Don't start mkinitcpio after kernel installation
   --mkinitcpio-config, -mc       Mkinitcpio config      --mkinitcpio-config noname | -mc noname
 
+  --kcflags, -k                  Add extra compiler CFLAGS      --kcflags -fprofile-use=vmlinux.profdata 
+                                                                -k -fprofile-use=vmlinux.profdata
   --llvm, -l                     Enable LLVM
   --disable-llvm, -dl            Disable LLVM
 
@@ -68,11 +70,13 @@ KERNEL_VERSION='5.12.9'         # Which version of kernel we will build.
 KERNEL_POSTFIX='noname'         # Kernel postfix
 KERNEL_CONFIG='/proc/config.gz' # Kernel configuration file. Support text files and gz files with extension gz.
 KERNEL_CONFIGURATOR='nconfig'   # Kernel configurator nconfig, menuconfig, xconfig.
+KERNEL_VERIFY_SIGN=1            # Verify kernel source archive GPG sign?
 # I recomment use nconfig, it better than menuconfig.
 # You can write full string like MENUCONFIG_COLOR=blackbg menuconfig
 # Detailed information you are can find https://www.kernel.org/doc/html/latest/kbuild/kconfig.html
-KERNEL_VERIFY_SIGN=1            # Verify kernel source archive GPG sign?
-MKINITCPIO=1 # Run mkinicpio -p configname after kernel install? 0 - NO, 1-YES.
+KBUILD_REDIRECT_MSGS='/dev/null'      # If not empty redirect build messages to file or /dev/null.(Show only errors in console)
+KCFLAGS=''                            # Add extra compiler CFLAGS
+MKINITCPIO=1                          # Run mkinicpio -p configname after kernel install? 0 - NO, 1-YES.
 MKINITCPIO_CONFIG="${KERNEL_POSTFIX}" # mkinicpio config file name.
 
 CONFIGURATOR=0      # Start kernel configurator? 0 - NO, 1-YES. If you not need configure kernel set 0.
@@ -86,12 +90,12 @@ CLEAN_SOURCE=0  # Clean source code after build? 0 - NO, 1-YES.
 REMOVE_SOURCE=1 # Remove source code directory after build? 0 - NO, 1-YES. I recommend use only one CLEAN_SOURCE or DIST_CLEAN or REMOVE_SOURCE
 SYSTEM_MAP=0    # Copy System.map to /boot/System-${KERNEL_POSTFIX}.map" after build? 0 - NO, 1-YES.
 
-PATCH_SOURCE=1                          # Apply kernel patches? 0 - NO, 1-YES.
-PATCHES=("${HOME}/confstore/gcc.patch") # Kernel patches for apply.
+PATCH_SOURCE=1 # Apply kernel patches? 0 - NO, 1-YES.
+PATCHES=("${HOME}/amazing.patch")     # Kernel patches for apply.
 
-DKMS_INSTALL=1                                        # DKMS Install? 0 - NO, 1-YES.
-DKMS_UNINSTALL=1                                      # DKMS Uninstall? 0 - NO, 1-YES.
-DKMS_MODULES=('openrazer-driver/3.0.1' 'digimend/10') # DKMS Modules what we will install.
-SIGN_DKMS=1                                           # Sign DKMS modules?
+DKMS_INSTALL=1       # DKMS Install? 0 - NO, 1-YES.
+DKMS_UNINSTALL=1     # DKMS Uninstall before Install? 0 - NO, 1-YES.
+DKMS_MODULES=('openrazer-driver/3.0.1' 'digimend/10')      # DKMS Modules what we will install.
+SIGN_DKMS=1          # Sign DKMS modules?
 SIGN_DKMS_MODULES=(razerkbd.ko razermouse.ko razerkraken.ko razeraccessory.ko) # Modules list to sign
 ```
