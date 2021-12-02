@@ -286,33 +286,32 @@ if [[ ! -d "${BUILD_DIR:?}" ]]; then
 fi
 
 # Kernel version for DKMS. Need for DKMS install.
-KERNEL_VERSION_DKMS=${KERNEL_VERSION}
+KERNEL_VERSION_FULL=${KERNEL_VERSION}
 
-# Linux Kernel Download URL and KERNEL_VERSION_DKMS for rc version.
+# Linux Kernel Download URL and KERNEL_VERSION_FULL for rc version.
 KERNEL_URL=''
 KERNEL_SIGN="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-${KERNEL_VERSION}.tar.sign"
 KERNEL_EXT='xz'
 if [[ "${KERNEL_VERSION}" =~ "rc" ]]; then                                      # If version contain rc string.
   KERNEL_URL="https://git.kernel.org/torvalds/t/linux-${KERNEL_VERSION}.tar.gz" # Kernel Download URL For RC Versions.
-  KERNEL_VERSION_DKMS="${KERNEL_VERSION%-*}.0-${KERNEL_VERSION#*-}"
+  KERNEL_VERSION_FULL="${KERNEL_VERSION%-*}.0-${KERNEL_VERSION#*-}"
   KERNEL_EXT='gz'
   KERNEL_VERIFY_SIGN=0
 else
   dots=${KERNEL_VERSION//[^\.]/}
   if [[ ${#dots} -eq 1 ]]; then
-    KERNEL_VERSION_DKMS="${KERNEL_VERSION}.0"
+    KERNEL_VERSION_FULL="${KERNEL_VERSION}.0"
   fi
   KERNEL_URL="https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_VERSION:0:1}.x/linux-${KERNEL_VERSION}.tar.xz" # Kernel Download URL For Release Versions.
 fi
 
 # Build flags can be empty for GCC and set to LLVM.
-BUILD_FLAGS=(KCFLAGS="${KCFLAGS}")
+BUILD_FLAGS=()
 # Set build flags if wea re using LLVM
 if [[ ${LLVM} -eq 1 ]]; then
   echo -e "\E[1;33m[+] LLVM and Clang Enabled \E[0m"
   if clang --version 2>/dev/null | grep -iq "clang\s*version\s*[0-9]" && ld.lld --version 2>/dev/null | grep -iq "LLD\s*[0-9]"; then
     BUILD_FLAGS=(
-      KCFLAGS="${KCFLAGS}"
       LLVM=1
       LLVM_IAS=1
       CC=clang
@@ -330,8 +329,15 @@ if [[ ${LLVM} -eq 1 ]]; then
       OBJDUMP=objdump
     )
   else
-    echo -e "\E[1;31m[-]Clang and ld.lld not found. Will use default system compiler! \E[0m"
+    echo -e "\E[1;31m[-] Clang and ld.lld not found. Will use default system compiler! \E[0m"
   fi
+fi
+
+# Add KCFLAGS if not empty.
+if [[ "${KCFLAGS}" != "" ]]; then
+  echo -e "\E[1;33m[+] Extra CFLAGS: ${KCFLAGS} \E[0m"
+  BUILD_FLAGS+=(KCFLAGS="${KCFLAGS}")
+  BUILD_FLAGS+=(KCPPFLAGS="${KCFLAGS}")
 fi
 
 # If kernel source archive not exist than download kernel source.
@@ -518,16 +524,15 @@ if [[ ${DKMS_UNINSTALL} -eq 1 ]]; then
   for dkms_module in "${DKMS_MODULES[@]}"; do
     echo -e "\E[1;33m[+] Uninstall DKMS module: ${dkms_module} \E[0m"
     set +e
-    sudo dkms uninstall "${dkms_module}" -k "${CURRENT_KERNEL}"
-    sudo dkms remove "${dkms_module}" -k "${CURRENT_KERNEL}"
+    sudo dkms unbuild "${dkms_module}" -k "${CURRENT_KERNEL}"
     set -e
   done
 fi
 
 # Remove modules directory if it exist with same version and name.
-if [[ -d "/lib/modules/${KERNEL_VERSION:?}-${KERNEL_POSTFIX:?}" ]]; then
-  echo -e "\E[1;33m[+] Removing modules directory: /lib/modules/${KERNEL_VERSION}-${KERNEL_POSTFIX} \E[0m"
-  sudo rm -fr "/lib/modules/${KERNEL_VERSION:?}-${KERNEL_POSTFIX:?}"
+if [[ -d "/lib/modules/${KERNEL_VERSION_FULL}-${KERNEL_POSTFIX:?}" ]]; then
+  echo -e "\E[1;33m[+] Removing modules directory: /lib/modules/${KERNEL_VERSION_FULL}-${KERNEL_POSTFIX} \E[0m"
+  sudo rm -fr "/lib/modules/${KERNEL_VERSION_FULL}-${KERNEL_POSTFIX:?}"
 fi
 
 # Modules install
@@ -553,7 +558,8 @@ if [[ ${DKMS_INSTALL} -eq 1 ]]; then
   for dkms_module in "${DKMS_MODULES[@]}"; do
     echo -e "\E[1;33m[+] Install DKMS module: ${dkms_module} \E[0m"
     set +e
-    eval "sudo ${BUILD_FLAGS[*]} dkms install ${dkms_module} -k ${KERNEL_VERSION_DKMS}-${KERNEL_POSTFIX}"
+    eval "sudo ${BUILD_FLAGS[*]} dkms build ${dkms_module} -k ${KERNEL_VERSION_FULL}-${KERNEL_POSTFIX} --force"
+    eval "sudo ${BUILD_FLAGS[*]} dkms install ${dkms_module} -k ${KERNEL_VERSION_FULL}-${KERNEL_POSTFIX} --force"
     set -e
   done
 fi
@@ -567,7 +573,7 @@ if [[ ${SIGN_DKMS} -eq 1 ]]; then
     MODULES_SIGN=()
     while IFS=$'\n' read -r line; do
       MODULES_SIGN+=("${line}")
-    done < <(find "/lib/modules/${KERNEL_VERSION_DKMS}-${KERNEL_POSTFIX}/" -type f -name "${module:?}*")
+    done < <(find "/lib/modules/${KERNEL_VERSION_FULL}-${KERNEL_POSTFIX}/" -type f -name "${module:?}*")
 
     for smodule in "${MODULES_SIGN[@]}"; do
 
